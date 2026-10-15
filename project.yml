@@ -1,0 +1,92 @@
+name: Mailmule
+options:
+  bundleIdPrefix: app.mailmule
+  deploymentTarget:
+    macOS: "15.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+packages:
+  MailmuleKit:
+    path: Packages/MailmuleKit
+  mlx-swift-lm:
+    url: https://github.com/ml-explore/mlx-swift-lm
+    from: 3.32.3
+  swift-huggingface:
+    url: https://github.com/huggingface/swift-huggingface
+    from: 0.9.0
+  swift-transformers:
+    url: https://github.com/huggingface/swift-transformers
+    from: 1.3.0
+targets:
+  Mailmule:
+    type: application
+    platform: macOS
+    sources:
+      - App/Sources
+      - path: App/Resources/AppIcon.icns
+        buildPhase: resources
+      - path: App/Resources/SidebarBackgrounds
+        type: folder
+        buildPhase: resources
+    dependencies:
+      - package: MailmuleKit
+      # Local language model (summaries, reply suggestions), run on demand with MLX.
+      - package: mlx-swift-lm
+        product: MLXLLM
+      - package: mlx-swift-lm
+        product: MLXLMCommon
+      - package: mlx-swift-lm
+        product: MLXHuggingFace
+      - package: swift-huggingface
+        product: HuggingFace
+      - package: swift-transformers
+        product: Tokenizers
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.mailmule.Mailmule
+        CODE_SIGN_IDENTITY: "Apple Development"
+        CODE_SIGN_STYLE: Automatic
+        ENABLE_HARDENED_RUNTIME: YES
+        CODE_SIGN_ENTITLEMENTS: App/Mailmule.entitlements
+        GENERATE_INFOPLIST_FILE: YES
+        INFOPLIST_KEY_CFBundleDisplayName: Mailmule
+        DEVELOPMENT_LANGUAGE: sk
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.productivity
+    info:
+      path: App/Info.plist
+      properties:
+        CFBundleIconFile: AppIcon
+        CFBundleDevelopmentRegion: sk
+        CFBundleLocalizations: [sk]
+        NSContactsUsageDescription: Mailmule ponúka adresy z Kontaktov pri písaní e-mailu.
+        NSCalendarsFullAccessUsageDescription: Mailmule zobrazuje vaše dnešné a zajtrajšie udalosti v Prehľade. Kalendár neopúšťa váš Mac.
+        NSCalendarsWriteOnlyAccessUsageDescription: Mailmule pridáva do Kalendára stretnutia z pozvánok, ktoré prijmete.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.mailmule.thread
+            CFBundleURLSchemes: [mailmule]
+          - CFBundleURLName: app.mailmule.mailto
+            CFBundleURLSchemes: [mailto]
+        NSServices:
+          - NSMenuItem:
+              default: Poslať e-mailom v Mailmule
+            NSMessage: sendFiles
+            NSPortName: Mailmule
+            NSSendFileTypes: [public.item]
+            NSRequiredContext: {}
+          - NSMenuItem:
+              default: Nový e-mail s označeným textom
+            NSMessage: sendText
+            NSPortName: Mailmule
+            NSSendTypes: [public.utf8-plain-text]
+            NSRequiredContext: {}
+schemes:
+  Mailmule:
+    build:
+      targets:
+        Mailmule: all
+    test:
+      targets: []
