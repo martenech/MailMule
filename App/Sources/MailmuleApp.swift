@@ -41,13 +41,27 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         }
     }
 
+    private var terminationReplied = false
+
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         guard let model, !model.pendingActions.isEmpty || model.pendingSend != nil else { return .terminateNow }
+        terminationReplied = false
         Task { @MainActor in
             await model.flushPendingActions()
-            sender.reply(toApplicationShouldTerminate: true)
+            self.replyToTermination(sender)
+        }
+        // A hung server operation must not keep the app stuck half-quit (it then won't even reopen).
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(15))
+            self.replyToTermination(sender)
         }
         return .terminateLater
+    }
+
+    private func replyToTermination(_ sender: NSApplication) {
+        guard !terminationReplied else { return }
+        terminationReplied = true
+        sender.reply(toApplicationShouldTerminate: true)
     }
 }
 

@@ -41,6 +41,11 @@ public actor LineConnection {
     private var buffer = Data()
     private var isClosed = false
     public private(set) var isSecure: Bool
+    /// How long a read on the STARTTLS transport waits for data before failing with `.timeout`.
+    /// The implicit-TLS transport detects dead connections with TCP keepalive instead.
+    public private(set) var readTimeout: TimeInterval = LineConnection.defaultReadTimeout
+
+    public static let defaultReadTimeout: TimeInterval = 120
 
     public init(host: String, port: UInt16, security: ConnectionSecurity = .tls) {
         switch security {
@@ -48,6 +53,12 @@ public actor LineConnection {
             let tls = NWProtocolTLS.Options()
             let tcp = NWProtocolTCP.Options()
             tcp.connectionTimeout = 20
+            // A connection that silently died (sleep, Wi-Fi change, NAT timeout) otherwise leaves
+            // receive() waiting forever, holding the account's operation lock with it.
+            tcp.enableKeepalive = true
+            tcp.keepaliveIdle = 60
+            tcp.keepaliveInterval = 15
+            tcp.keepaliveCount = 4
             let params = NWParameters(tls: tls, tcp: tcp)
             transport = .network(NWConnection(host: NWEndpoint.Host(host), port: NWEndpoint.Port(rawValue: port)!, using: params))
             isSecure = true
@@ -95,6 +106,11 @@ public actor LineConnection {
         buffer.removeAll()
         task.startSecureConnection()
         isSecure = true
+    }
+
+    /// Longer while waiting in IMAP IDLE, which is silent for many minutes.
+    public func setReadTimeout(_ seconds: TimeInterval) {
+        readTimeout = seconds
     }
 
     public func close() {
@@ -177,10 +193,11 @@ public actor LineConnection {
                 }
             }
         case .stream(let task, _):
-            // Long timeout: IMAP IDLE waits for many minutes without data.
             chunk = try await withCheckedThrowingContinuation { cont in
-                task.readData(ofMinLength: 1, maxLength: 256 * 1024, timeout: 3600) { data, atEOF, error in
-                    if let error {
+                task.readData(ofMinLength: 1, maxLength: 256 * 1024, timeout: readTimeout) { data, atEOF, error in
+                    if let error = error as? URLError, error.code == .timedOut {
+                        cont.resume(throwing: ConnectionError.timeout)
+                    } else if let error {
                         cont.resume(throwing: ConnectionError.failed(error.localizedDescription))
                     } else if let data, !data.isEmpty {
                         cont.resume(returning: data)

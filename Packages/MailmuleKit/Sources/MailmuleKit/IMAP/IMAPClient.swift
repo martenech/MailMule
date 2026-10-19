@@ -293,6 +293,19 @@ public actor IMAPClient {
         }
         defer { timer.cancel() }
 
+        // The server stays silent until something changes or DONE is sent after `refreshAfter`.
+        await connection.setReadTimeout(Double(refreshAfter.components.seconds) + LineConnection.defaultReadTimeout)
+        let result: Result<Bool, Error>
+        do {
+            result = .success(try await readIdleResponses(tag: tag))
+        } catch {
+            result = .failure(error)
+        }
+        await connection.setReadTimeout(LineConnection.defaultReadTimeout)
+        return try result.get()
+    }
+
+    private func readIdleResponses(tag: String) async throws -> Bool {
         var changed = false
         while true {
             let response = try IMAPParser.parse(try await readResponse())
